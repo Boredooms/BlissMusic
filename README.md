@@ -1,6 +1,6 @@
 <div align="center">
 
-![BlissMusic Logo](./logo.png)
+<img src="./logo.png" width="120" alt="BlissMusic Logo">
 
 # 🎵 BlissMusic
 
