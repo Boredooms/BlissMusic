@@ -1,0 +1,331 @@
+/**
+ * Quota-Free YouTube Music API using ytmusic-api
+ * NO API quota limits! Scrapes YouTube Music directly.
+ */
+
+import YTMusic from 'ytmusic-api';
+import type { Track } from '@/types';
+
+// Initialize YTMusic client
+let ytmusicClient: any = null;
+
+async function getYTMusicClient() {
+    if (!ytmusicClient) {
+        ytmusicClient = new YTMusic();
+        await ytmusicClient.initialize();
+    }
+    return ytmusicClient;
+}
+
+/**
+ * Search YouTube Music without quota limits
+ */
+export async function searchYouTubeMusicNoQuota(
+    query: string,
+    maxResults = 10
+): Promise<Track[]> {
+    try {
+        const ytmusic = await getYTMusicClient();
+
+        console.log(`[YTMusic-NoQuota] Searching for: "${query}"`);
+
+        // Search for songs
+        const searchResults = await ytmusic.search(query, 'song');
+
+        if (!searchResults || searchResults.length === 0) {
+            console.warn(`[YTMusic-NoQuota] No results for: "${query}"`);
+            return [];
+        }
+
+        // Convert to our Track format
+        const tracks: Track[] = searchResults
+            .slice(0, maxResults)
+            .map((result: any) => ({
+                id: result.videoId || result.id,
+                title: result.name || result.title || '',
+                artist: result.artist?.name || result.artists?.[0]?.name || 'Unknown Artist',
+                thumbnail: result.thumbnails?.[0]?.url || result.thumbnail || '',
+                duration: parseDuration(result.duration || 0),
+                videoId: result.videoId || result.id,
+            }))
+            .filter((track: Track) => track.title && track.videoId);
+
+        console.log(`[YTMusic-NoQuota] ✅ Returned ${tracks.length} tracks`);
+        return tracks;
+
+    } catch (error: any) {
+        // Handle 400 errors (bad queries) gracefully
+        if (error.status === 400 || error.response?.status === 400) {
+            console.warn(`[YTMusic-NoQuota] Bad query: "${query}" - trying artist fallback`);
+
+            // Use SPECIFIC trending artists as fallback (much more reliable!)
+            const artistFallbacks = [
+                'Arijit Singh',
+                'Shreya Ghoshal',
+                'Sonu Nigam',
+            ];
+
+            for (const artist of artistFallbacks) {
+                try {
+                    const ytmusic = await getYTMusicClient();
+                    const fallbackResults = await ytmusic.search(artist, 'song');
+
+                    if (!fallbackResults || fallbackResults.length === 0) continue;
+
+                    const tracks: Track[] = fallbackResults
+                        .slice(0, maxResults)
+                        .map((result: any) => ({
+                            id: result.videoId || result.id,
+                            title: result.name || result.title || '',
+                            artist: result.artist?.name || result.artists?.[0]?.name || 'Unknown Artist',
+                            thumbnail: result.thumbnails?.[0]?.url || result.thumbnail || '',
+                            duration: parseDuration(result.duration || 0),
+                            videoId: result.videoId || result.id,
+                        }))
+                        .filter((track: Track) => track.title && track.videoId);
+
+                    if (tracks.length > 0) {
+                        console.log(`[YTMusic-NoQuota] ✅ Artist fallback "${artist}" returned ${tracks.length} tracks`);
+                        return tracks;
+                    }
+                } catch (fallbackError) {
+                    console.warn(`[YTMusic-NoQuota] Artist "${artist}" failed, trying next...`);
+                    continue;
+                }
+            }
+
+            console.error('[YTMusic-NoQuota] All fallbacks failed');
+            return [];
+        }
+
+        console.error('[YTMusic-NoQuota] Search error:', error);
+        return [];
+    }
+}
+
+/**
+ * Get trending music (no quota!)
+ */
+export async function getTrendingMusicNoQuota(
+    maxResults = 20
+): Promise<Track[]> {
+    const currentYear = new Date().getFullYear();
+    return searchYouTubeMusicNoQuota(`trending music ${currentYear}`, maxResults);
+}
+
+// Helper: Parse duration string to seconds
+function parseDuration(duration: any): number {
+    if (typeof duration === 'number') return duration;
+    if (typeof duration !== 'string') return 0;
+
+    // Handle MM:SS or HH:MM:SS format
+    const parts = duration.split(':').map(Number);
+    if (parts.length === 2) {
+        return parts[0] * 60 + parts[1]; // MM:SS
+    } else if (parts.length === 3) {
+        return parts[0] * 3600 + parts[1] * 60 + parts[2]; // HH:MM:SS
+    }
+    return 0;
+}
+
+/**
+ * Shuffle array
+ */
+function shuffle<T>(array: T[]): T[] {
+    const shuffled = [...array];
+    for (let i = shuffled.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1));
+        [shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]];
+    }
+    return shuffled;
+}
+
+/**
+ * Get region name for display
+ */
+function getRegionName(code: string): string {
+    const regions: Record<string, string> = {
+        'IN': 'India 🇮🇳',
+        'US': 'United States 🇺🇸',
+        'GB': 'United Kingdom 🇬🇧',
+        'CA': 'Canada 🇨🇦',
+        'KR': 'Korea 🇰🇷',
+        'JP': 'Japan 🇯🇵',
+    };
+    return regions[code] || code;
+}
+
+/**
+ * Get a YouTube Music playlist by ID
+ * Falls back to curated search if direct fetch fails
+ */
+export async function getYTMusicPlaylist(playlistId: string, playlistTitle?: string): Promise<Track[]> {
+    try {
+        const ytmusic = await getYTMusicClient();
+
+        console.log(`[YTMusic-NoQuota] Fetching playlist: ${playlistId}`);
+
+        try {
+            // Try direct playlist fetch first
+            const playlist = await ytmusic.getPlaylist(playlistId);
+
+            if (playlist && playlist.tracks && playlist.tracks.length > 0) {
+                // Convert to our Track format
+                const tracks: Track[] = playlist.tracks
+                    .map((track: any) => ({
+                        id: track.videoId || track.id,
+                        title: track.name || track.title || '',
+                        artist: track.artist?.name || track.artists?.[0]?.name || 'Unknown Artist',
+                        thumbnail: track.thumbnails?.[0]?.url || track.thumbnail || '',
+                        duration: parseDuration(track.duration || 0),
+                        videoId: track.videoId || track.id,
+                    }))
+                    .filter((track: Track) => track.title && track.videoId);
+
+                console.log(`[YTMusic-NoQuota] ✅ Loaded ${tracks.length} tracks from playlist`);
+                return tracks;
+            }
+        } catch (playlistError: any) {
+            console.warn(`[YTMusic-NoQuota] Direct playlist fetch failed (${playlistError.status}), trying fallback...`);
+        }
+
+        // FALLBACK: Use curated search queries based on playlist title
+        console.log(`[YTMusic-NoQuota] Using search fallback for "${playlistTitle}"...`);
+
+        // ACCURATE queries using SPECIFIC trending Indian artists
+        const fallbackQueries: Record<string, string[]> = {
+            'Trending India': [
+                'Arijit Singh',
+                'Sonu Nigam',
+                'Shreya Ghoshal',
+                'Badshah',
+                'Guru Randhawa',
+            ],
+            'Bollywood Hits': [
+                'Arijit Singh bollywood',
+                'Shreya Ghoshal',
+                'Atif Aslam',
+                'Armaan Malik',
+                'Neha Kakkar',
+            ],
+            'South Cinema': [
+                'Anirudh Ravichander',
+                'Devi Sri Prasad',
+                'Sid Sriram',
+                'Haricharan',
+                'Shreya Ghoshal tamil',
+            ],
+        };
+
+        const queries = fallbackQueries[playlistTitle || ''] || ['Arijit Singh'];
+
+        const allTracks: Track[] = [];
+        const seenIds = new Set<string>();
+
+        for (const query of queries) {
+            const results = await searchYouTubeMusicNoQuota(query, 10);
+            results.forEach(track => {
+                if (!seenIds.has(track.id)) {
+                    seenIds.add(track.id);
+                    allTracks.push(track);
+                }
+            });
+        }
+
+        // Shuffle and return 50 songs
+        const shuffled = allTracks.sort(() => Math.random() - 0.5);
+        console.log(`[YTMusic-NoQuota] ✅ Fallback returned ${allTracks.length} tracks`);
+        return shuffled.slice(0, 50);
+
+    } catch (error: any) {
+        console.error(`[YTMusic-NoQuota] Playlist error:`, error);
+        return [];
+    }
+}
+
+/**
+ * Get Trending Albums from YouTube Music (Region-Aware)
+ * Fetches real albums from popular artists
+ */
+export async function getTrendingAlbumsNoQuota(
+    region: string = 'IN',
+    maxResults = 12
+): Promise<any[]> {
+    try {
+        const ytmusic = await getYTMusicClient();
+
+        console.log(`[YTMusic-NoQuota] Fetching trending albums for region: ${region}...`);
+
+        // Region-specific ARTIST queries to get their latest albums
+        const regionArtists: Record<string, string[]> = {
+            'IN': ['Arijit Singh', 'AR Rahman', 'Anirudh Ravichander', 'Shreya Ghoshal', 'Badshah', 'Diljit Dosanjh', 'Sid Sriram', 'Pritam'],
+            'US': ['Taylor Swift', 'Drake', 'The Weeknd', 'Ariana Grande', 'Kendrick Lamar', 'Billie Eilish', 'Post Malone', 'SZA'],
+            'GB': ['Ed Sheeran', 'Adele', 'Harry Styles', 'Dua Lipa', 'Sam Smith', 'Stormzy'],
+            'RU': ['Баста', 'Моргенштерн', 'Егор Крид', 'Ольга Бузова', 'Тимати'],
+            'JP': ['米津玄師', 'YOASOBI', 'Official髭男dism', 'あいみょん', 'King Gnu'],
+            'KR': ['BTS', 'BLACKPINK', 'NewJeans', 'Stray Kids', 'Seventeen', 'IU', 'aespa'],
+            'BR': ['Anitta', 'Ludmilla', 'Wesley Safadão', 'Gusttavo Lima', 'Ivete Sangalo'],
+            'DE': ['Apache 207', 'Capital Bra', 'RAF Camora', 'Bonez MC', 'Sido'],
+            'FR': ['Aya Nakamura', 'PNL', 'Ninho', 'Jul', 'Orelsan'],
+            'ES': ['Bad Bunny', 'C. Tangana', 'Rosalía', 'Rauw Alejandro', 'Quevedo'],
+            'MX': ['Peso Pluma', 'Grupo Frontera', 'Junior H', 'Natanael Cano', 'Banda MS'],
+            'DEFAULT': ['The Weeknd', 'Drake', 'Taylor Swift', 'Bad Bunny', 'BTS', 'Dua Lipa']
+        };
+
+        const artists = regionArtists[region] || regionArtists['DEFAULT'];
+
+        const allAlbums: any[] = [];
+        const seenIds = new Set<string>();
+
+        for (const artist of artists) {
+            try {
+                // Search for the artist
+                const artistResults = await ytmusic.search(artist, 'artist');
+
+                if (!artistResults || artistResults.length === 0) continue;
+
+                const artistData = artistResults[0];
+                const artistId = artistData.browseId || artistData.id;
+
+                if (!artistId) continue;
+
+                // Get artist's albums
+                try {
+                    const artistInfo = await ytmusic.getArtist(artistId);
+
+                    if (artistInfo && artistInfo.albums && artistInfo.albums.length > 0) {
+                        // Get the most recent 1-2 albums from this artist
+                        artistInfo.albums.slice(0, 2).forEach((album: any) => {
+                            const albumId = album.browseId || album.playlistId || album.id;
+                            if (albumId && !seenIds.has(albumId)) {
+                                seenIds.add(albumId);
+                                allAlbums.push({
+                                    id: albumId,
+                                    title: album.name || album.title || 'Unknown Album',
+                                    artist: artistData.name || artist,
+                                    thumbnail: album.thumbnails?.[0]?.url || album.thumbnail || artistData.thumbnails?.[0]?.url || '',
+                                    year: album.year || new Date().getFullYear(),
+                                    type: 'Album'
+                                });
+                            }
+                        });
+                    }
+                } catch (artistError) {
+                    console.warn(`[YTMusic-NoQuota] Failed to get albums for artist "${artist}", continuing...`);
+                }
+
+                if (allAlbums.length >= maxResults) break;
+            } catch (queryError) {
+                console.warn(`[YTMusic-NoQuota] Artist "${artist}" search failed, continuing...`);
+                continue;
+            }
+        }
+
+        console.log(`[YTMusic-NoQuota] ✅ Fetched ${allAlbums.length} real albums for ${region}`);
+        return allAlbums.slice(0, maxResults);
+
+    } catch (error: any) {
+        console.error('[YTMusic-NoQuota] Error fetching albums:', error);
+        return [];
+    }
+}
