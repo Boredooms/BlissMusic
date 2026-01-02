@@ -55,3 +55,7 @@ logs
 
 # Test files
 /test-gemini-models.js
+
+# Player scripts with potential API keys
+*-player-script.js
+player-script.js
