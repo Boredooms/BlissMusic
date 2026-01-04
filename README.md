@@ -301,27 +301,6 @@ Special thanks to these amazing projects:
 
 ## 🎉 **Start Vibing Today!**
 
-**[Try Just Chillin Now →](https://your-app.vercel.app)**
-
-Made with 💜 by [Your Name](https://github.com/yourusername)
-
-*If you like this project, don't forget to ⭐ star it!*
-
-</div>
-
----
-
-## 🔗 **Quick Links**
-
-- 🌐 [Live Demo](https://your-app.vercel.app)
-- 📖 [Documentation](docs/)
-- 🚀 [Deployment Guide](docs/deployment-guide.md)
-- 🎨 [Design System](docs/design-system.md)
-- 🔧 [API Reference](docs/api-reference.md)
-- 📝 [Changelog](CHANGELOG.md)
-
----
-
 <div align="center">
 
 **Happy Listening! 🎵**
